@@ -1,7 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ShoppingBag, X, Plus, Minus, MapPin, User, Info, Phone, Settings, Trash2, Upload, Edit2 } from 'lucide-react';
+import { ShoppingBag, X, Plus, Minus, MapPin, User, Info, Phone, Settings, Trash2, Upload, Edit2, PlayCircle } from 'lucide-react';
 
 const CATEGORIES = ["Tous", "Visage", "Corps", "Sérums", "Packs & Coffrets"];
+
+const DEFAULT_VIDEOS = [
+  { id: 1, title: "Routine Soin du Visage", url: "https://www.youtube.com/embed/dQw4w9WgXcQ", description: "Découvrez notre routine complète pour une peau éclatante." }
+];
 
 const DEFAULT_PRODUCTS = [
   { id: 1, name: "Sérum Éclat à la Vitamine C", category: "Sérums", price: 15000, description: "Illumine le teint et réduit les taches.", image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=800" },
@@ -31,8 +35,13 @@ export default function App() {
   const [customerAddress, setCustomerAddress] = useState("");
   const [deliveryZone, setDeliveryZone] = useState("abidjan");
 
+  // Main Tabs State
+  const [activeMainTab, setActiveMainTab] = useState("Boutique");
+  const [videos, setVideos] = useState<any[]>([]);
+
   // CMS State
   const [isCmsOpen, setIsCmsOpen] = useState(false);
+  const [cmsTab, setCmsTab] = useState("Produits");
   const [showAuth, setShowAuth] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [secretClicks, setSecretClicks] = useState(0);
@@ -47,6 +56,12 @@ export default function App() {
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdDesc, setNewProdDesc] = useState("");
   const [newProdImage, setNewProdImage] = useState("");
+
+  // New Video Form State
+  const [editingVideoId, setEditingVideoId] = useState<number | null>(null);
+  const [newVidTitle, setNewVidTitle] = useState("");
+  const [newVidUrl, setNewVidUrl] = useState("");
+  const [newVidDesc, setNewVidDesc] = useState("");
 
   // --- Effects ---
   useEffect(() => {
@@ -76,6 +91,18 @@ export default function App() {
       }
     } else {
       setProducts(DEFAULT_PRODUCTS);
+    }
+
+    // Load videos
+    const savedVideos = localStorage.getItem('wab_store_videos');
+    if (savedVideos) {
+      try {
+        setVideos(JSON.parse(savedVideos));
+      } catch (e) {
+        setVideos(DEFAULT_VIDEOS);
+      }
+    } else {
+      setVideos(DEFAULT_VIDEOS);
     }
   }, []);
 
@@ -187,6 +214,69 @@ export default function App() {
     }
   };
 
+  const saveVideos = (updatedVideos: any[]) => {
+    setVideos(updatedVideos);
+    localStorage.setItem('wab_store_videos', JSON.stringify(updatedVideos));
+  };
+
+  const resetVideoForm = () => {
+    setNewVidTitle("");
+    setNewVidUrl("");
+    setNewVidDesc("");
+    setEditingVideoId(null);
+  };
+
+  const handleEditVideo = (video: any) => {
+    setEditingVideoId(video.id);
+    setNewVidTitle(video.title);
+    setNewVidUrl(video.url);
+    setNewVidDesc(video.description || "");
+  };
+
+  const handleSaveVideo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVidTitle || !newVidUrl) {
+      alert("Veuillez remplir le titre et l'URL de la vidéo.");
+      return;
+    }
+
+    let embedUrl = newVidUrl;
+    if (embedUrl.includes("youtube.com/watch?v=")) {
+      embedUrl = embedUrl.replace("youtube.com/watch?v=", "youtube.com/embed/");
+      const ampersandPosition = embedUrl.indexOf('&');
+      if(ampersandPosition !== -1) {
+        embedUrl = embedUrl.substring(0, ampersandPosition);
+      }
+    } else if (embedUrl.includes("youtu.be/")) {
+      embedUrl = embedUrl.replace("youtu.be/", "youtube.com/embed/");
+    }
+
+    if (editingVideoId) {
+      const updatedVideos = videos.map(v => 
+        v.id === editingVideoId 
+          ? { ...v, title: newVidTitle, url: embedUrl, description: newVidDesc }
+          : v
+      );
+      saveVideos(updatedVideos);
+    } else {
+      const newVideo = {
+        id: Date.now(),
+        title: newVidTitle,
+        url: embedUrl,
+        description: newVidDesc
+      };
+      saveVideos([newVideo, ...videos]);
+    }
+    
+    resetVideoForm();
+  };
+
+  const handleDeleteVideo = (id: number) => {
+    if (window.confirm("Supprimer cette vidéo ?")) {
+      saveVideos(videos.filter(v => v.id !== id));
+    }
+  };
+
   // --- Shop Functions ---
   const filteredProducts = useMemo(() => {
     if (activeCategory === "Tous") return products;
@@ -294,8 +384,27 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-        {/* Categories */}
-        <div className="flex overflow-x-auto pb-4 mb-8 hide-scrollbar gap-3 snap-x">
+        
+        {/* Main Tabs */}
+        <div className="flex justify-center gap-8 mb-8 border-b border-brand-accent/10">
+          <button 
+            onClick={() => setActiveMainTab("Boutique")}
+            className={`font-serif text-lg pb-3 px-2 border-b-2 transition-colors ${activeMainTab === "Boutique" ? "border-brand-accent text-brand-text font-medium" : "border-transparent text-brand-text/50 hover:text-brand-text"}`}
+          >
+            Boutique
+          </button>
+          <button 
+            onClick={() => setActiveMainTab("Tutoriels")}
+            className={`font-serif text-lg pb-3 px-2 border-b-2 transition-colors ${activeMainTab === "Tutoriels" ? "border-brand-accent text-brand-text font-medium" : "border-transparent text-brand-text/50 hover:text-brand-text"}`}
+          >
+            Vidéos Tutoriels
+          </button>
+        </div>
+
+        {activeMainTab === "Boutique" ? (
+          <>
+            {/* Categories */}
+            <div className="flex overflow-x-auto pb-4 mb-8 hide-scrollbar gap-3 snap-x">
           {CATEGORIES.map(cat => (
             <button
               key={cat}
@@ -354,6 +463,38 @@ export default function App() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+          </>
+        ) : (
+          <div className="mb-12">
+            {videos.length === 0 ? (
+              <div className="text-center py-12 text-brand-text/60">
+                <p>Aucun tutoriel vidéo pour le moment.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {videos.map(video => (
+                  <div key={video.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-brand-accent/10 flex flex-col">
+                    <div className="relative w-full pt-[56.25%] bg-gray-100">
+                      <iframe 
+                        src={video.url} 
+                        title={video.title}
+                        className="absolute top-0 left-0 w-full h-full"
+                        allowFullScreen
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      />
+                    </div>
+                    <div className="p-4 flex-grow flex flex-col">
+                      <h3 className="font-serif text-lg font-medium text-brand-text mb-2">{video.title}</h3>
+                      {video.description && (
+                         <p className="text-sm text-brand-text/70">{video.description}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -592,9 +733,27 @@ export default function App() {
               </button>
             </div>
 
+            {/* CMS Tabs */}
+            <div className="flex border-b border-gray-100 px-6 pt-2 bg-gray-50">
+              <button 
+                onClick={() => setCmsTab("Produits")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${cmsTab === "Produits" ? "border-brand-text text-brand-text" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+              >
+                Produits
+              </button>
+              <button 
+                onClick={() => setCmsTab("Vidéos")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${cmsTab === "Vidéos" ? "border-brand-text text-brand-text" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+              >
+                Vidéos Tutoriels
+              </button>
+            </div>
+
             <div className="flex-grow overflow-y-auto p-6 flex flex-col md:flex-row gap-8">
-              {/* Add Product Form */}
-              <div className="w-full md:w-1/3 space-y-4">
+              {cmsTab === "Produits" ? (
+                <>
+                  {/* Add Product Form */}
+                  <div className="w-full md:w-1/3 space-y-4">
                 <h3 className="font-medium text-gray-800 border-b pb-2">
                   {editingProductId ? "Modifier le produit" : "Ajouter un produit"}
                 </h3>
@@ -670,6 +829,67 @@ export default function App() {
                   ))}
                 </div>
               </div>
+                </>
+              ) : (
+                <>
+                  {/* Add Video Form */}
+                  <div className="w-full md:w-1/3 space-y-4">
+                    <h3 className="font-medium text-gray-800 border-b pb-2">
+                      {editingVideoId ? "Modifier la vidéo" : "Ajouter une vidéo"}
+                    </h3>
+                    <form onSubmit={handleSaveVideo} className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Titre de la vidéo</label>
+                        <input type="text" required value={newVidTitle} onChange={e => setNewVidTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">URL (YouTube, Vimeo, etc.)</label>
+                        <input type="url" required value={newVidUrl} onChange={e => setNewVidUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                        <textarea rows={3} value={newVidDesc} onChange={e => setNewVidDesc(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none resize-none" />
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button type="submit" className="flex-1 bg-brand-text text-white py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
+                          {editingVideoId ? "Mettre à jour" : "Ajouter la vidéo"}
+                        </button>
+                        {editingVideoId && (
+                          <button type="button" onClick={resetVideoForm} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+                            Annuler
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* Video List */}
+                  <div className="w-full md:w-2/3 space-y-4">
+                    <h3 className="font-medium text-gray-800 border-b pb-2">Vidéos actuelles ({videos.length})</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-2">
+                      {videos.map(v => (
+                        <div key={v.id} className="flex gap-3 bg-white border border-gray-100 p-3 rounded-xl shadow-sm">
+                          <div className="w-20 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <PlayCircle className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <div className="flex-grow min-w-0">
+                            <h4 className="text-sm font-medium text-gray-800 truncate">{v.title}</h4>
+                            <p className="text-xs text-gray-500 truncate">{v.url}</p>
+                            <div className="flex items-center gap-3 mt-2">
+                              <button onClick={() => handleEditVideo(v)} className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                                <Edit2 className="w-3 h-3" /> Modifier
+                              </button>
+                              <button onClick={() => handleDeleteVideo(v.id)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                                <Trash2 className="w-3 h-3" /> Supprimer
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
