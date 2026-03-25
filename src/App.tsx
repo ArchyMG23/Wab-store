@@ -59,8 +59,10 @@ export default function App() {
 
   // New Video Form State
   const [editingVideoId, setEditingVideoId] = useState<number | null>(null);
+  const [newVidType, setNewVidType] = useState<"url" | "upload">("url");
   const [newVidTitle, setNewVidTitle] = useState("");
   const [newVidUrl, setNewVidUrl] = useState("");
+  const [newVidFile, setNewVidFile] = useState("");
   const [newVidDesc, setNewVidDesc] = useState("");
 
   // --- Effects ---
@@ -220,8 +222,10 @@ export default function App() {
   };
 
   const resetVideoForm = () => {
+    setNewVidType("url");
     setNewVidTitle("");
     setNewVidUrl("");
+    setNewVidFile("");
     setNewVidDesc("");
     setEditingVideoId(null);
   };
@@ -229,46 +233,95 @@ export default function App() {
   const handleEditVideo = (video: any) => {
     setEditingVideoId(video.id);
     setNewVidTitle(video.title);
-    setNewVidUrl(video.url);
     setNewVidDesc(video.description || "");
+    if (video.url.startsWith("data:video")) {
+      setNewVidType("upload");
+      setNewVidFile(video.url);
+      setNewVidUrl("");
+    } else {
+      setNewVidType("url");
+      setNewVidUrl(video.url);
+      setNewVidFile("");
+    }
+  };
+
+  const handleVideoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert("La vidéo est trop volumineuse (max 5MB pour le stockage local). Veuillez utiliser un lien YouTube ou TikTok pour les vidéos plus longues.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewVidFile(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSaveVideo = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newVidTitle || !newVidUrl) {
-      alert("Veuillez remplir le titre et l'URL de la vidéo.");
+    if (newVidType === "url" && !newVidUrl) {
+      alert("Veuillez remplir l'URL de la vidéo.");
+      return;
+    }
+    if (newVidType === "upload" && !newVidFile) {
+      alert("Veuillez sélectionner une vidéo.");
+      return;
+    }
+    if (!newVidTitle) {
+      alert("Veuillez remplir le titre.");
       return;
     }
 
-    let embedUrl = newVidUrl;
-    if (embedUrl.includes("youtube.com/watch?v=")) {
-      embedUrl = embedUrl.replace("youtube.com/watch?v=", "youtube.com/embed/");
-      const ampersandPosition = embedUrl.indexOf('&');
-      if(ampersandPosition !== -1) {
-        embedUrl = embedUrl.substring(0, ampersandPosition);
+    let finalUrl = "";
+    let isIframe = true;
+
+    if (newVidType === "url") {
+      finalUrl = newVidUrl;
+      if (finalUrl.includes("youtube.com/watch?v=")) {
+        finalUrl = finalUrl.replace("youtube.com/watch?v=", "youtube.com/embed/");
+        const ampersandPosition = finalUrl.indexOf('&');
+        if(ampersandPosition !== -1) {
+          finalUrl = finalUrl.substring(0, ampersandPosition);
+        }
+      } else if (finalUrl.includes("youtu.be/")) {
+        finalUrl = finalUrl.replace("youtu.be/", "youtube.com/embed/");
+      } else if (finalUrl.includes("tiktok.com")) {
+        const match = finalUrl.match(/video\/(\d+)/);
+        if (match) {
+          finalUrl = `https://www.tiktok.com/embed/v2/${match[1]}`;
+        }
+      } else if (finalUrl.endsWith(".mp4") || finalUrl.endsWith(".webm")) {
+        isIframe = false;
       }
-    } else if (embedUrl.includes("youtu.be/")) {
-      embedUrl = embedUrl.replace("youtu.be/", "youtube.com/embed/");
+    } else {
+      finalUrl = newVidFile;
+      isIframe = false;
     }
 
+    const newVideoData = {
+      id: editingVideoId || Date.now(),
+      title: newVidTitle,
+      url: finalUrl,
+      description: newVidDesc,
+      isIframe: isIframe
+    };
+
+    let updatedVideos;
     if (editingVideoId) {
-      const updatedVideos = videos.map(v => 
-        v.id === editingVideoId 
-          ? { ...v, title: newVidTitle, url: embedUrl, description: newVidDesc }
-          : v
-      );
-      saveVideos(updatedVideos);
+      updatedVideos = videos.map(v => v.id === editingVideoId ? newVideoData : v);
     } else {
-      const newVideo = {
-        id: Date.now(),
-        title: newVidTitle,
-        url: embedUrl,
-        description: newVidDesc
-      };
-      saveVideos([newVideo, ...videos]);
+      updatedVideos = [newVideoData, ...videos];
     }
     
-    resetVideoForm();
+    try {
+      saveVideos(updatedVideos);
+      resetVideoForm();
+    } catch (error) {
+      alert("Erreur: La vidéo est trop volumineuse pour le stockage local. Veuillez utiliser un lien YouTube ou TikTok.");
+    }
   };
 
   const handleDeleteVideo = (id: number) => {
@@ -477,13 +530,22 @@ export default function App() {
                 {videos.map(video => (
                   <div key={video.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-brand-accent/10 flex flex-col">
                     <div className="relative w-full pt-[56.25%] bg-gray-100">
-                      <iframe 
-                        src={video.url} 
-                        title={video.title}
-                        className="absolute top-0 left-0 w-full h-full"
-                        allowFullScreen
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      />
+                      {video.isIframe !== false && !video.url.startsWith('data:video') && !video.url.endsWith('.mp4') ? (
+                        <iframe 
+                          src={video.url} 
+                          title={video.title}
+                          className="absolute top-0 left-0 w-full h-full"
+                          allowFullScreen
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        />
+                      ) : (
+                        <video 
+                          src={video.url} 
+                          title={video.title}
+                          controls
+                          className="absolute top-0 left-0 w-full h-full object-cover bg-black"
+                        />
+                      )}
                     </div>
                     <div className="p-4 flex-grow flex flex-col">
                       <h3 className="font-serif text-lg font-medium text-brand-text mb-2">{video.title}</h3>
@@ -842,10 +904,43 @@ export default function App() {
                         <label className="block text-xs font-medium text-gray-600 mb-1">Titre de la vidéo</label>
                         <input type="text" required value={newVidTitle} onChange={e => setNewVidTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none" />
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">URL (YouTube, Vimeo, etc.)</label>
-                        <input type="url" required value={newVidUrl} onChange={e => setNewVidUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none" />
+                      
+                      <div className="flex gap-4 mb-2">
+                        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                          <input type="radio" name="vidType" checked={newVidType === "url"} onChange={() => setNewVidType("url")} className="text-brand-accent focus:ring-brand-accent" />
+                          Lien (YouTube, TikTok)
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                          <input type="radio" name="vidType" checked={newVidType === "upload"} onChange={() => setNewVidType("upload")} className="text-brand-accent focus:ring-brand-accent" />
+                          Fichier Local
+                        </label>
                       </div>
+
+                      {newVidType === "url" ? (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">URL de la vidéo</label>
+                          <input type="url" required={newVidType === "url"} value={newVidUrl} onChange={e => setNewVidUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=... ou TikTok" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none" />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Fichier Vidéo (Max 5MB)</label>
+                          <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer">
+                            <input type="file" accept="video/mp4,video/webm,video/ogg" onChange={handleVideoFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                            {newVidFile ? (
+                              <div className="flex flex-col items-center">
+                                <PlayCircle className="w-6 h-6 mb-1 text-green-600" />
+                                <span className="text-xs text-green-600 font-medium">Vidéo chargée</span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center text-gray-500">
+                                <Upload className="w-6 h-6 mb-1" />
+                                <span className="text-xs">Cliquez pour choisir une vidéo</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
                         <textarea rows={3} value={newVidDesc} onChange={e => setNewVidDesc(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-accent/50 outline-none resize-none" />
